@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spinning Wheel</title>
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial, sans-serif;
+        }
+        #wheel-container {
+            position: relative;
+            display: inline-block;
+        }
+        canvas {
+            border: 2px solid black;
+            width: 700px;
+            height: 700px;
+        }
+        #arrow {
+            position: absolute;
+            right: -30px;
+            top: 50%;
+            transform: translateY(-50%) rotate(180deg);
+            width: 0;
+            height: 0;
+            border-left: 20px solid black;
+            border-top: 10px solid transparent;
+            border-bottom: 10px solid transparent;
+        }
+        @keyframes blink {
+            0% { opacity: 1; }
+            50% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+        .blink {
+            animation: blink 0.5s infinite;
+        }
+        #error-message {
+            color: red;
+            font-weight: bold;
+            display: none;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Spinning Wheel</h1>
+    <div id="wheel-container">
+        <div id="arrow"></div>
+        <canvas id="wheel" width="700" height="700"></canvas>
+    </div>
+    <br>
+    <textarea id="nameInput" placeholder="Enter names, one per line..." rows="10" cols="40"></textarea>
+    <br>
+    <button onclick="setNames()">Set Names</button>
+    <button onclick="spinWheel()">Spin</button>
+    <button onclick="clearNames()">Clear</button>
+    <h2 id="winner">Winner: </h2>
+    <p id="error-message">Please enter at least one name before spinning!</p>
+    <p id="counter">Remaining Names: 0</p>
+    <h3>Winners:</h3>
+    <ul id="winners-list"></ul>
+    
+    <audio id="spin-sound" src="https://www.fesliyanstudios.com/play-mp3/4386" preload="auto"></audio>
+    <audio id="clap-sound" src="https://www.fesliyanstudios.com/play-mp3/4391" preload="auto"></audio>
+    
+    <script>
+        const canvas = document.getElementById("wheel");
+        const ctx = canvas.getContext("2d");
+        const spinSound = document.getElementById("spin-sound");
+        const clapSound = document.getElementById("clap-sound");
+        let names = Array(10).fill("Name");
+        let winners = [];
+        let angle = 0;
+        let totalSlices = names.length;
+        let spinDuration = 5000; // milliseconds
+        let delayBeforeDeclare = 1500; // milliseconds - Time to show the slice
+
+        function updateCounter() {
+            document.getElementById("counter").innerText = `Remaining Names: ${names.length}`;
+        }
+
+        function drawWheel() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            totalSlices = Math.max(names.length, 10);
+            const sliceAngle = (2 * Math.PI) / totalSlices;
+            for (let i = 0; i < totalSlices; i++) {
+                ctx.beginPath();
+                ctx.moveTo(350, 350);
+                ctx.arc(350, 350, 350, sliceAngle * i, sliceAngle * (i + 1));
+                ctx.fillStyle = `hsl(${(i * 360) / totalSlices}, 100%, 50%)`;
+                ctx.fill();
+                ctx.stroke();
+                ctx.fillStyle = "white";
+                ctx.font = `${Math.max(700 / totalSlices, 8)}px Arial`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.save();
+                ctx.translate(350, 350);
+                ctx.rotate(sliceAngle * i + sliceAngle / 2);
+                ctx.fillText(names[i] || "", 220, 0);
+                ctx.restore();
+            }
+        }
+
+        function setNames() {
+            const input = document.getElementById("nameInput").value.trim();
+            if (!input) return;
+            const inputNames = input.split("\n").map(name => name.trim()).filter(name => name);
+            names = [...new Set(inputNames)];
+            document.getElementById("nameInput").value = "";
+            drawWheel();
+            updateCounter();
+        }
+
+        function clearNames() {
+            names = Array(10).fill("Name");
+            winners = [];
+            drawWheel();
+            document.getElementById("winner").innerText = "Winner: ";
+            document.getElementById("winners-list").innerHTML = "";
+            updateCounter();
+        }
+
+        function spinWheel() {
+            if (names.length === 0 || names.every(name => name === "Name")) {
+                document.getElementById("error-message").style.display = "block";
+                return;
+            }
+            document.getElementById("error-message").style.display = "none";
+            document.getElementById("winner").innerText = "";
+            document.getElementById("winner").classList.remove("blink");
+            spinSound.play();
+            let finalAngle = (Math.random() * 360) + (Math.floor(Math.random() * 10) + 10) * 360;
+            let duration = spinDuration;
+            let start = null;
+            function animateWheel(timestamp) {
+                if (!start) start = timestamp;
+                let progress = timestamp - start;
+                let easeOut = Math.pow(progress / duration - 1, 5) + 1;
+                angle = easeOut * finalAngle;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.save();
+                ctx.translate(350, 350);
+                ctx.rotate(angle * Math.PI / 180);
+                ctx.translate(-350, -350);
+                drawWheel();
+                ctx.restore();
+                if (progress < duration) {
+                    requestAnimationFrame(animateWheel);
+                } else {
+                    spinSound.pause();
+                    spinSound.currentTime = 0;
+                    let selectedIndex = Math.floor((totalSlices - (angle / (360 / totalSlices)) % totalSlices) % totalSlices);
+                    let winner = names[selectedIndex];
+
+                    setTimeout(() => {
+                        if (winner) {
+                            document.getElementById("winner").innerText = `Winner: ${winner}`;
+                            document.getElementById("winner").classList.add("blink");
+                            clapSound.play();
+
+                            // Add winner to the list with number
+                            const winnerNumber = winners.length + 1;
+                            winners.push(winner);
+                            let li = document.createElement("li");
+                            li.textContent = `${winnerNumber}. ${winner}`; // Added number
+                            document.getElementById("winners-list").appendChild(li);
+
+                            // Remove winner from names array
+                            names.splice(selectedIndex, 1);
+                            drawWheel();
+                            updateCounter();
+                        }
+                    }, delayBeforeDeclare); // Delay before declaring the winner
+                }
+            }
+            requestAnimationFrame(animateWheel);
+        }
+        drawWheel();
+        updateCounter();
+    </script>
+</body>
+</html>
+
